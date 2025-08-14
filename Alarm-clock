@@ -1,0 +1,90 @@
+# alarm_clock.py
+import argparse
+import sys
+import time
+from datetime import datetime, timedelta
+
+# --- Cross-platform alert sound ---
+def _beep_windows():
+    import winsound
+    for _ in range(10):
+        winsound.Beep(1000, 300)  # freq, ms
+        time.sleep(0.15)
+
+def _beep_fallback():
+    # Terminal bell as fallback (macOS/Linux/WSL)
+    for _ in range(30):
+        print("\a", end="", flush=True)
+        time.sleep(0.2)
+
+def ring():
+    try:
+        _beep_windows()
+    except Exception:
+        _beep_fallback()
+
+# --- Helpers ---
+def parse_alarm_time(s: str):
+    """
+    Accepts 'HH:MM' or 'HH:MM:SS' (24h). Returns (hour, minute, second).
+    """
+    parts = s.strip().split(":")
+    if len(parts) not in (2, 3):
+        raise ValueError("Time must be HH:MM or HH:MM:SS in 24-hour format.")
+    h, m = int(parts[0]), int(parts[1])
+    s = int(parts[2]) if len(parts) == 3 else 0
+    if not (0 <= h < 24 and 0 <= m < 60 and 0 <= s < 60):
+        raise ValueError("Invalid time value.")
+    return h, m, s
+
+def next_occurrence(h: int, m: int, s: int) -> datetime:
+    now = datetime.now()
+    target = now.replace(hour=h, minute=m, second=s, microsecond=0)
+    if target <= now:
+        target += timedelta(days=1)  # schedule for tomorrow if time already passed
+    return target
+
+def human_delta(td: timedelta) -> str:
+    total = int(td.total_seconds())
+    h = total // 3600
+    m = (total % 3600) // 60
+    s = total % 60
+    bits = []
+    if h: bits.append(f"{h}h")
+    if m or (h and s): bits.append(f"{m}m")
+    bits.append(f"{s}s")
+    return " ".join(bits)
+
+def countdown_until(target: datetime):
+    try:
+        while True:
+            now = datetime.now()
+            if now >= target:
+                return
+            left = target - now
+            msg = f"\r⏳ Alarm in {human_delta(left)}  (at {target.strftime('%Y-%m-%d %H:%M:%S')})"
+            sys.stdout.write(msg)
+            sys.stdout.flush()
+            time.sleep(0.25)
+    except KeyboardInterrupt:
+        print("\nCancelled.")
+        sys.exit(0)
+
+# --- Main ---
+def main():
+    parser = argparse.ArgumentParser(description="Simple terminal alarm clock.")
+    parser.add_argument(
+        "--time", "-t", required=True,
+        help="Alarm time in 24h format, e.g. 07:30 or 21:45:00"
+    )
+    parser.add_argument(
+        "--message", "-m", default="⏰ Alarm!",
+        help="Message to display when the alarm rings"
+    )
+    parser.add_argument(
+        "--snooze", "-s", type=int, default=5,
+        help="Snooze minutes (press 's' then Enter to snooze). Default: 5"
+    )
+    parser.add_argument(
+        "--daily", action="store_true",
+        help="Repe
